@@ -25,6 +25,16 @@ variable "project_name" {
   default     = "azure-cloud"
 }
 
+variable "vnet_address_space" {
+  description = "Address space list for the environment VNet"
+  type        = list(string)
+}
+
+variable "subnet_prefixes" {
+  description = "Subnet name to CIDR mapping for the environment"
+  type        = map(string)
+}
+
 variable "tags" {
   description = "Tags to apply to resources"
   type        = map(string)
