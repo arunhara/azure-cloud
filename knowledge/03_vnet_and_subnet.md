@@ -101,9 +101,65 @@ The module creates these Azure resources:
 
 Important behavior:
 
-- `for_each = var.subnet_prefixes` tells Terraform to loop through the map and create one subnet per key.
+- `for_each = var.subnet_prefixes` tells Terraform to expand this block into **one subnet resource per map entry**.
 - If the map has `app` and `data`, Terraform creates 2 subnets.
 - If you later add `private-endpoints = "10.10.3.0/24"`, Terraform creates one more subnet.
+
+### How Terraform knows to “loop” (`for_each`)
+
+Terraform does **not** use a `for` loop keyword on resources. Instead, **`for_each` is a special argument (a “meta-argument”)** on the `resource` block.
+
+When you write:
+
+```hcl
+resource "azurerm_subnet" "subnet" {
+  for_each = var.subnet_prefixes
+  # ...
+}
+```
+
+Terraform looks at the **type and shape** of `var.subnet_prefixes`:
+
+- In this module it is declared as `map(string)` in `modules/network/variables.tf`.
+- For a **map**, Terraform creates **one instance** of `azurerm_subnet.subnet` for **each key** in that map.
+
+So “looping” is really: **Terraform multiplies this single block into N separate resource instances**, where N is the number of keys in the map. There is no separate loop syntax—`for_each` *is* the mechanism.
+
+You can also use `for_each` with a **set of strings** (e.g. `toset(["a", "b"])`) where each string becomes one instance; here we use a map because each subnet needs both a **name** (key) and a **CIDR** (value).
+
+### How the `each` object is used
+
+Inside **any** block that has `for_each`, Terraform defines a read-only object named **`each`**. It exists **only** in that block’s body.
+
+For **`for_each` over a map** (our case):
+
+| Expression   | Meaning |
+|-------------|---------|
+| `each.key`  | The map **key** — here, the subnet **name** Terraform will use in Azure (e.g. `app`, `data`). |
+| `each.value`| The map **value** — here, the **CIDR string** for that subnet (e.g. `10.10.1.0/24`). |
+
+Applied to the subnet resource:
+
+```9:16:modules/network/main.tf
+resource "azurerm_subnet" "subnet" {
+  for_each = var.subnet_prefixes
+
+  name                 = each.key
+  resource_group_name  = var.resource_group_name
+  virtual_network_name = azurerm_virtual_network.vnet.name
+  address_prefixes     = [each.value]
+}
+```
+
+- `name = each.key` — Azure subnet name comes from the tfvars map key.
+- `address_prefixes = [each.value]` — Azure expects a **list** of prefixes; we wrap the single CIDR string in `[...]`.
+
+**Addresses in state and references:** instances are indexed by map key, for example:
+
+- `azurerm_subnet.subnet["app"]`
+- `azurerm_subnet.subnet["data"]`
+
+So elsewhere in Terraform you refer to a specific subnet by that index, or use `azurerm_subnet.subnet` as a map of all instances.
 
 ---
 
