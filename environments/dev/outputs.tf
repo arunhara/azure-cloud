@@ -23,6 +23,11 @@ output "subnet_ids" {
   value       = module.network.subnet_ids
 }
 
+output "nsg_ids" {
+  description = "Map of subnet name to network security group ID"
+  value       = module.network.nsg_ids
+}
+
 output "environment" {
   description = "Environment (dev)"
   value       = var.environment
