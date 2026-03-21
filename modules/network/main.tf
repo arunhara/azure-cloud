@@ -15,7 +15,7 @@ resource "azurerm_subnet" "subnet" {
   address_prefixes     = [each.value]
 }
 
-resource "azurerm_network_security_group" "subnet" {
+resource "azurerm_network_security_group" "nsg" {
   for_each = var.subnet_prefixes
 
   name                = "nsg-${each.key}"
@@ -24,9 +24,9 @@ resource "azurerm_network_security_group" "subnet" {
   tags                = var.tags
 }
 
-resource "azurerm_subnet_network_security_group_association" "subnet" {
+resource "azurerm_subnet_network_security_group_association" "subnet_nsg" {
   for_each = var.subnet_prefixes
 
   subnet_id                 = azurerm_subnet.subnet[each.key].id
-  network_security_group_id = azurerm_network_security_group.subnet[each.key].id
+  network_security_group_id = azurerm_network_security_group.nsg[each.key].id
 }

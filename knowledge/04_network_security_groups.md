@@ -53,6 +53,7 @@ Important Azure constraint: a subnet may have **at most one** subnet-level NSG a
 | Piece | Location |
 |--------|-----------|
 | VNet, subnets, NSGs, associations | `modules/network/main.tf` |
+| State rename for old NSG/association local names (optional) | `modules/network/state_migrate.tf` |
 | Module outputs (`subnet_ids`, `nsg_ids`) | `modules/network/outputs.tf` |
 | Environment wiring (unchanged module call) | `environments/dev/main.tf`, `environments/prod/main.tf` |
 | Root outputs exposing `nsg_ids` | `environments/dev/outputs.tf`, `environments/prod/outputs.tf` |
@@ -62,6 +63,18 @@ No new variables are required in environments for this step: NSGs are driven by 
 ---
 
 ## 4) How Terraform Implements It
+
+### Why three blocks don’t all need the same *local* name
+
+In Terraform, a resource is addressed as **`<resource_type>.<local_name>`**, for example `azurerm_subnet.subnet`. The **`<local_name>`** (second string in the block) is only for **references inside Terraform**. It is **not** the name shown in the Azure Portal—that comes from arguments like `name = "nsg-app"`.
+
+It is valid to reuse the same local name on **different** resource types (`azurerm_subnet.subnet` vs `azurerm_network_security_group.subnet`) because the **type** prefix makes the full address unique. That is still **confusing to read**, so this module uses clearer local names:
+
+- `azurerm_subnet.subnet` — subnets  
+- `azurerm_network_security_group.nsg` — NSGs  
+- `azurerm_subnet_network_security_group_association.subnet_nsg` — associations  
+
+If you already applied an older version of this module that used `subnet` as the local name for NSGs and associations, the `moved` blocks in `modules/network/state_migrate.tf` tell Terraform to **rebind** those addresses in state to `nsg` / `subnet_nsg` so Azure resources are not destroyed and recreated. (That file is optional long-term cleanup once every workspace has migrated.)
 
 ### Same `for_each` keys as subnets
 
@@ -81,7 +94,7 @@ NSGs and associations reuse **`var.subnet_prefixes`** with the **same** `for_eac
 
 2. **Association** — `for_each = var.subnet_prefixes`  
    - `subnet_id = azurerm_subnet.subnet[each.key].id`  
-   - `network_security_group_id = azurerm_network_security_group.subnet[each.key].id`  
+   - `network_security_group_id = azurerm_network_security_group.nsg[each.key].id`  
 
 The `[each.key]` indexing ties the three resources (subnet, NSG, association) to the **same** map entry.
 
@@ -109,7 +122,7 @@ resource "azurerm_network_security_rule" "app_allow_https_inbound" {
   source_address_prefix       = "Internet"
   destination_address_prefix  = "*"
   resource_group_name         = var.resource_group_name
-  network_security_group_name = azurerm_network_security_group.subnet["app"].name
+  network_security_group_name = azurerm_network_security_group.nsg["app"].name
 }
 ```
 
